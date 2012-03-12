@@ -1,0 +1,96 @@
+#Particle packing by insertion and successive growing of particles
+
+atom_style	granular
+atom_modify	map array
+boundary	m m m
+newton		off
+echo		both
+
+communicate	single vel yes
+
+units		si
+
+region		reg block -0.05 0.05 -0.05 0.05 0. 0.15 units box
+create_box	1 reg
+
+neighbor	0.002 bin
+neigh_modify	delay 0
+
+
+#Material properties required for new pair styles
+
+fix 		m1 all property/global youngsModulus peratomtype 5.e6
+fix 		m2 all property/global poissonsRatio peratomtype 0.45
+fix 		m3 all property/global coefficientRestitution peratomtypepair 1 0.3
+fix 		m4 all property/global coefficientFriction peratomtypepair 1 0.5
+
+#New pair style
+pair_style 	gran/hertz/history 1 0  #Hertzian without cohesion
+pair_coeff	* *
+
+timestep	0.00001
+
+fix		xwalls all wall/gran/hertz/history 1 0 xplane -0.05 0.05 1
+fix		ywalls all wall/gran/hertz/history 1 0 yplane -0.05 0.05 1
+fix		zwalls all wall/gran/hertz/history 1 0 zplane  0.00 0.15 1
+
+#parameters for gradually growing particle diameter - customize by changing alpha_target, rmax_target, size_ratio
+variable	alpha_start equal 0.25
+variable	alpha_target equal 0.65
+
+variable	rmax_target equal 0.011
+variable	size_ratio_21 equal 0.625	
+
+variable	grow_ts equal 50000
+variable	grow_every equal 40
+variable	relax_ts equal 20000
+
+variable	dump_every equal (${grow_ts}+${relax_ts})/200.
+
+#calculate grow rate and inital particle radius
+variable	r_growrate equal (${alpha_target}/${alpha_start})^(${grow_every}/(3.*${grow_ts}))
+print		"The radius grow rate is ${r_growrate}"
+variable	r1_start equal ${rmax_target}/(${r_growrate}^(${grow_ts}/${grow_every}))
+variable	r2_start equal ${r1_start}*${size_ratio_21}
+
+#distributions for insertion
+fix		pts1 all particletemplate/sphere 1 atom_type 1 density constant 2500 radius constant ${r1_start}
+fix		pts2 all particletemplate/sphere 1 atom_type 1 density constant 2500 radius constant ${r2_start}
+fix		pdd1 all particledistribution/discrete 1  2 pts1 0.3 pts2 0.7
+
+#region and insertion
+group		nve_group region reg
+fix		ins nve_group pour/dev/packing 1 distributiontemplate pdd1 vol ${alpha_start} 200 region reg
+
+#apply nve integration to all particles that are inserted as single particles
+fix		integr nve_group nve/sphere
+
+#output settings, include total thermal energy
+compute		1 all erotate/sphere
+thermo_style	custom step atoms ke c_1 vol
+thermo		1000
+thermo_modify	lost ignore norm no
+compute_modify	thermo_temp dynamic yes
+
+#insert the first particles
+run		1
+dump		dmp all custom ${dump_every} post/dump.packing id type type x y z ix iy iz vx vy vz fx fy fz omegax omegay omegaz radius 
+unfix		ins
+
+#do the diameter grow - dump every grow step so that variable from compute is updated
+compute 	rad all property/atom radius
+
+variable	d_grown atom ${r_growrate}*2.*c_rad
+fix		grow all adapt ${grow_every} atom diameter d_grown
+neigh_modify	every ${grow_every} check no
+
+#run
+run		${grow_ts}
+
+#let the packing relax and settle due to gravity
+unfix		grow
+fix		grav all gravity 9.81 vector 0.0 0.0 -1.0
+neigh_modify	check yes
+run		${relax_ts}
+
+

@@ -1,0 +1,259 @@
+LIGGGHTS MASTER based on LAMMPS 10 Mar 2010
+#Compression example
+#Contributed by Jean-François Jerier
+#               jean-francois.jerier@epfl.ch 
+
+units		si
+
+atom_style	granular
+atom_modify	map array  
+boundary	m m m      
+newton		off       
+
+# Read data
+read_data	Ordored_Liggghts_long.sys
+  orthogonal box = (-1 -1 -1) to (2.5 2.5 2.5)
+  1 by 1 by 1 processor grid
+  1687 atoms
+
+set		group all diameter 0.08
+  1687 settings made for diameter
+
+# Some grouping (useful for fixing)
+group 		A type 1
+1687 atoms in group A
+
+communicate	single vel yes  
+
+neighbor	0.001 bin                                 
+neigh_modify	delay 0       
+
+#Material properties required for new pair styles
+
+fix 		m1 all property/global youngsModulus peratomtype 1.e5
+fix 		m2 all property/global poissonsRatio peratomtype 0.3
+fix 		m3 all property/global coefficientRestitution peratomtypepair 1 0.9
+fix 		m4 all property/global coefficientFriction peratomtypepair 1 0.05
+fix 		m5 all property/global characteristicVelocity scalar 2.
+fix 		m6 all property/global cohesionEnergyDensity peratomtypepair 1 200
+
+#New pair style
+pair_style 	gran/hertz/history 1 1  #Hertzian with cohesion
+pair_coeff	* *
+
+timestep	0.02
+
+fix		gravi all gravity 0 vector 0.0 0.0 -1.0
+
+#fix		zwalls all wall/gran/hertz/history 1 0 zplane -1.0 2.5 1 
+
+#granular walls
+fix		topwall all mesh/gran/stressanalysis topwall.stl   1 1. 0. 0. 0. 0. 0. 0.  
+# ======
+#topwall.stl:
+solid Mesh
+facet normal 0.000000 0.000000 -1.000000
+outer loop
+vertex -0.0500000 -0.0500000 1.0400000
+vertex -0.0500000  1.0500000 1.0400000
+vertex  1.0500000  1.0500000 1.0400000
+endloop
+endfacet
+facet normal 0.000000 0.000000 -1.000000
+outer loop
+vertex 1.0500000 -0.0500000 1.0400000
+vertex -0.0500000 -0.0500000 1.0400000
+vertex  1.0500000  1.0500000 1.0400000
+endloop
+endfacet
+endsolid Mesh
+#=====
+fix		bottomwall all mesh/gran/stressanalysis bottomwall.stl   1 1. 0. 0. 0. 0. 0. 0.
+# ======
+#bottomwall.stl:
+solid Mesh
+facet normal 0.000000 0.000000 1.000000
+outer loop
+vertex -0.0500000 -0.0500000 -0.050000
+vertex -0.0500000  1.0500000 -0.050000
+vertex  1.0500000  1.0500000 -0.050000
+endloop
+endfacet
+facet normal 0.000000 0.000000 1.000000
+outer loop
+vertex 1.0500000 -0.0500000 -0.050000
+vertex -0.0500000 -0.0500000 -0.050000
+vertex  1.0500000  1.0500000 -0.050000
+endloop
+endfacet
+endsolid Mesh
+#=====
+fix		wall all wall/gran/hertz/history 1 0 mesh/gran 2 topwall bottomwall
+
+fix F_movetop   all move/mesh/gran linear 0. 0. -0.0001 units box topwall 1
+
+#apply nve integration to all particles that are inserted as single particles
+fix		integr A nve/sphere    
+
+#
+dump		D_stl all stl 1000 post/Wall-*.stl
+dump 		I_stl all mesh/gran/VTK 1000 post/Stress_file-*.vtk stress
+
+#output settings, include total thermal energy
+compute		1 all erotate/sphere
+thermo_style	custom step atoms ke c_1 vol
+thermo		1000
+thermo_modify	lost ignore norm no
+compute_modify	thermo_temp dynamic yes
+
+#insert the first particles so that dump is not empty
+run		1
+Memory usage per processor = 16.268 Mbytes
+Step Atoms KinEng 1 Volume 
+       0     1687            0            0       42.875 
+       1     1687            0            0       42.875 
+Loop time of 0.00255299 on 1 procs for 1 steps with 1687 atoms
+
+Pair  time (%) = 1.40667e-05 (0.55099)
+Neigh time (%) = 0.00224519 (87.9436)
+Comm  time (%) = 1.50204e-05 (0.588345)
+Outpt time (%) = 2.6226e-05 (1.02727)
+Other time (%) = 0.000252485 (9.8898)
+
+Nlocal:    1687 ave 1687 max 1687 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 0
+Ave neighs/atom = 0
+Neighbor list builds = 1
+Dangerous builds = 0
+dump		dmp all custom 1000 post/dump.compression id type type x y z ix iy iz vx vy vz fx fy fz omegax omegay omegaz radius
+
+#run
+run		100000 upto
+Memory usage per processor = 16.268 Mbytes
+Step Atoms KinEng 1 Volume 
+       1     1687            0            0       42.875 
+    1000     1687            0            0       42.875 
+    2000     1687            0            0       42.875 
+    3000     1687            0            0       42.875 
+    4000     1687            0            0       42.875 
+    5000     1687            0            0       42.875 
+    6000     1687 1.3574529e-06            0       42.875 
+    7000     1687 1.3574529e-06            0       42.875 
+    8000     1687 1.3574529e-06            0       42.875 
+    9000     1687 1.3574529e-06            0       42.875 
+   10000     1687 1.3574529e-06            0       42.875 
+   11000     1687 1.3574529e-06            0       42.875 
+   12000     1687 1.3574529e-06            0       42.875 
+   13000     1687 1.3574529e-06            0       42.875 
+   14000     1687 1.0434697e-06 2.4833327e-09       42.875 
+   15000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   16000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   17000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   18000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   19000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   20000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   21000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   22000     1687 1.0422566e-06 2.5879986e-09       42.875 
+   23000     1687 9.992158e-07 2.7599738e-09       42.875 
+   24000     1687 1.0098657e-06 3.5884155e-09       42.875 
+   25000     1687 1.2167958e-06 6.6792377e-09       42.875 
+   26000     1687 1.3583926e-06 8.5217251e-09       42.875 
+   27000     1687 1.6142315e-06 1.0184511e-08       42.875 
+   28000     1687 1.6487724e-06 1.0928565e-08       42.875 
+   29000     1687 1.6704381e-06 1.1589751e-08       42.875 
+   30000     1687 1.6871529e-06 1.1824893e-08       42.875 
+   31000     1687 1.6856978e-06 1.1983505e-08       42.875 
+   32000     1687 1.6749494e-06 1.2572096e-08       42.875 
+   33000     1687 1.6559431e-06  1.28894e-08       42.875 
+   34000     1687 1.6170604e-06 1.3574166e-08       42.875 
+   35000     1687 1.5921947e-06 1.4304776e-08       42.875 
+   36000     1687 1.5573818e-06 1.5863818e-08       42.875 
+   37000     1687 1.5316832e-06 1.7104575e-08       42.875 
+   38000     1687 1.5202279e-06 1.8054253e-08       42.875 
+   39000     1687 1.5457416e-06 1.8752402e-08       42.875 
+   40000     1687 1.5231959e-06 1.9244958e-08       42.875 
+   41000     1687 1.4955875e-06 2.0829756e-08       42.875 
+   42000     1687  1.50913e-06 2.1803582e-08       42.875 
+   43000     1687 1.5181589e-06 2.0560011e-08       42.875 
+   44000     1687 1.5276722e-06 2.1248261e-08       42.875 
+   45000     1687 1.5243062e-06 2.1563918e-08       42.875 
+   46000     1687 1.5153005e-06 2.2596736e-08       42.875 
+   47000     1687 1.508179e-06 2.2982321e-08       42.875 
+   48000     1687 1.5619577e-06 2.2909256e-08       42.875 
+   49000     1687 1.5738359e-06 2.3074393e-08       42.875 
+   50000     1687 1.5693252e-06 2.3391121e-08       42.875 
+   51000     1687 1.5621393e-06 2.3715377e-08       42.875 
+   52000     1687 1.5503527e-06 2.402395e-08       42.875 
+   53000     1687 1.5772049e-06 2.3877482e-08       42.875 
+   54000     1687 1.5970794e-06 2.4168166e-08       42.875 
+   55000     1687 1.5924512e-06 2.4388758e-08       42.875 
+   56000     1687 1.5717124e-06 2.4917535e-08       42.875 
+   57000     1687 1.5620767e-06 2.5314175e-08       42.875 
+   58000     1687 1.5661758e-06 2.6083002e-08       42.875 
+   59000     1687 1.5643943e-06 2.6389446e-08       42.875 
+   60000     1687 1.5908522e-06 2.6094989e-08       42.875 
+   61000     1687 1.6002188e-06 2.6003203e-08       42.875 
+   62000     1687 1.5879852e-06 2.6019563e-08       42.875 
+   63000     1687 1.5883531e-06 2.7181902e-08       42.875 
+   64000     1687 1.6054461e-06 2.7343986e-08       42.875 
+   65000     1687 1.6170781e-06 2.7834246e-08       42.875 
+   66000     1687 1.6156709e-06 2.7772825e-08       42.875 
+   67000     1687 1.6273656e-06 2.7996323e-08       42.875 
+   68000     1687 1.6402265e-06 2.7727232e-08       42.875 
+   69000     1687 1.6466704e-06 2.8154503e-08       42.875 
+   70000     1687 1.6573341e-06 2.7759586e-08       42.875 
+   71000     1687 1.6575464e-06 2.7426151e-08       42.875 
+   72000     1687 1.6568938e-06 2.7547564e-08       42.875 
+   73000     1687 1.6449449e-06 2.7653264e-08       42.875 
+   74000     1687 1.6510177e-06 2.8316062e-08       42.875 
+   75000     1687 1.7010303e-06 2.867599e-08       42.875 
+   76000     1687 1.7190822e-06 2.9784744e-08       42.875 
+   77000     1687 1.7525996e-06 3.0887555e-08       42.875 
+   78000     1687 1.7663269e-06 3.1359959e-08       42.875 
+   79000     1687 1.7938941e-06 3.1987646e-08       42.875 
+   80000     1687 1.7916709e-06 3.2779187e-08       42.875 
+   81000     1687 1.8098763e-06 3.3507252e-08       42.875 
+   82000     1687 1.8477723e-06 3.3416345e-08       42.875 
+   83000     1687 1.871402e-06 3.3647886e-08       42.875 
+   84000     1687 1.9220439e-06 3.3735987e-08       42.875 
+   85000     1687 1.9112333e-06 3.3994958e-08       42.875 
+   86000     1687 1.9198619e-06 3.3789419e-08       42.875 
+   87000     1687 1.9292579e-06 3.397067e-08       42.875 
+   88000     1687 1.9461632e-06 3.4665657e-08       42.875 
+   89000     1687 1.9914702e-06 3.5067041e-08       42.875 
+   90000     1687 2.0029547e-06 3.5321675e-08       42.875 
+   91000     1687 2.0279843e-06 3.5181839e-08       42.875 
+   92000     1687 2.0460198e-06 3.5200918e-08       42.875 
+   93000     1687 2.0503451e-06 3.5179096e-08       42.875 
+   94000     1687 2.0793306e-06 3.5852924e-08       42.875 
+   95000     1687 2.0933828e-06 3.6108573e-08       42.875 
+   96000     1687 2.113987e-06 3.6538018e-08       42.875 
+   97000     1687 2.1454418e-06 3.721628e-08       42.875 
+   98000     1687 2.1801109e-06 3.8537563e-08       42.875 
+   99000     1687 2.1992798e-06 3.8984374e-08       42.875 
+  100000     1687 2.227054e-06 3.9189998e-08       42.875 
+Loop time of 21.4599 on 1 procs for 99999 steps with 1687 atoms
+
+Pair  time (%) = 7.48086 (34.8597)
+Neigh time (%) = 1.58111 (7.36772)
+Comm  time (%) = 0.195681 (0.911844)
+Outpt time (%) = 0.855454 (3.98629)
+Other time (%) = 11.3468 (52.8744)
+
+Nlocal:    1687 ave 1687 max 1687 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    1035 ave 1035 max 1035 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 1035
+Ave neighs/atom = 0.613515
+Neighbor list builds = 678
+Dangerous builds = 0

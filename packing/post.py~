@@ -1,0 +1,4 @@
+d=dump("post/dump.packing")
+#d.scale()
+v=vtk(d)
+v.manyGran("post/vtk_out")
